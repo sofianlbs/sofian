@@ -1,32 +1,32 @@
 import { connect } from "cloudflare:sockets";
+// import { createHash, createDecipheriv } from "node:crypto";
+// import { Buffer } from "node:buffer";
 
 // Variables
-const rootDomain = "pannely.workers.dev";
-const serviceName = "jambu";
-const apiKey = "7e2f6633ebeb862e50d9238a4";
-const apiEmail = "paoan@gmail.com";
-const accountID = "cc54feaa44bfa6bbb30f";
-const zoneID = "825bc64f18bd3812096aec";
+const rootDomain = "yumicftigarunwebid.workers.dev"; // Ganti dengan domain utama kalian
+const serviceName = "liselotte"; // Ganti dengan nama workers kalian
+const apiKey = ""; // Ganti dengan Global API key kalian (https://dash.cloudflare.com/profile/api-tokens)
+const apiEmail = ""; // Ganti dengan email yang kalian gunakan
+const accountID = ""; // Ganti dengan Account ID kalian (https://dash.cloudflare.com -> Klik domain yang kalian gunakan)
+const zoneID = ""; // Ganti dengan Zone ID kalian (https://dash.cloudflare.com -> Klik domain yang kalian gunakan)
 let isApiReady = false;
-let prxIP = "";
-let cachedPrxList = [];
+let proxyIP = "";
+let cachedProxyList = [];
 
 // Constant
-const horse = "dHJvamFu";
-const flash = "dmxlc3M=";
-const v2 = "djJyYXk=";
-const neko = "Y2xhc2g=";
-
 const APP_DOMAIN = `${serviceName}.${rootDomain}`;
 const PORTS = [443, 80];
-const PROTOCOLS = [atob(horse), atob(flash), "ss"];
-const KV_PRX_URL = "https://raw.githubusercontent.com/jaka2m/Nautica/refs/heads/main/kvProxyList.json";
-const PRX_BANK_URL = "https://raw.githubusercontent.com/jaka2m/botak/refs/heads/main/cek/proxyList.txt";
+const PROTOCOLS = [reverse("najort"), reverse("sselv"), reverse("ss")];
+const KV_PROXY_URL = "https://raw.githubusercontent.com/FoolVPN-ID/Nautica/refs/heads/main/kvProxyList.json";
+const PROXY_BANK_URL = "https://raw.githubusercontent.com/Mayumiwandi/Emilia/refs/heads/main/Data/alive.txt";
 const DNS_SERVER_ADDRESS = "8.8.8.8";
 const DNS_SERVER_PORT = 53;
-const PRX_HEALTH_CHECK_API = "https://id1.foolvpn.me/api/v1/check";
+const PROXY_HEALTH_CHECK_API = "https://yumiproxy.vercel.app/api/v1";
 const CONVERTER_URL = "https://api.foolvpn.me/convert";
-const BAD_WORDS_LIST = "https://gist.githubusercontent.com/adierebel/a69396d79b787b84d89b45002cb37cd6/raw/6df5f8728b18699496ad588b3953931078ab9cf1/kata-kasar.txt";
+const DONATE_LINK = "https://trakteer.id/mayumiwandi/tip";
+const BAD_WORDS_LIST =
+  "https://gist.githubusercontent.com/adierebel/a69396d79b787b84d89b45002cb37cd6/raw/6df5f8728b18699496ad588b3953931078ab9cf1/kata-kasar.txt";
+const PROXY_PER_PAGE = 20;
 const WS_READY_STATE_OPEN = 1;
 const WS_READY_STATE_CLOSING = 2;
 const CORS_HEADER_OPTIONS = {
@@ -35,37 +35,42 @@ const CORS_HEADER_OPTIONS = {
   "Access-Control-Max-Age": "86400",
 };
 
-const PROXY_PER_PAGE = 5;
-
-async function getKVPrxList(kvPrxUrl = KV_PRX_URL) {
-  if (!kvPrxUrl) {
-    throw new Error("No URL Provided!");
+async function getKVProxyList(kvProxyUrl = KV_PROXY_URL) {
+  if (!kvProxyUrl) {
+    throw new Error("No KV Proxy URL Provided!");
   }
 
-  const kvPrx = await fetch(kvPrxUrl);
-  if (kvPrx.status == 200) {
-    return await kvPrx.json();
+  const kvProxy = await fetch(kvProxyUrl);
+  if (kvProxy.status == 200) {
+    return await kvProxy.json();
   } else {
     return {};
   }
 }
 
-async function getPrxList(prxBankUrl = PRX_BANK_URL) {
-  if (!prxBankUrl) {
-    throw new Error("No URL Provided!");
+async function getProxyList(proxyBankUrl = PROXY_BANK_URL) {
+  /**
+   * Format:
+   *
+   * <IP>,<Port>,<Country ID>,<ORG>
+   * Contoh:
+   * 1.1.1.1,443,SG,Cloudflare Inc.
+   */
+  if (!proxyBankUrl) {
+    throw new Error("No Proxy Bank URL Provided!");
   }
 
-  const prxBank = await fetch(prxBankUrl);
-  if (prxBank.status == 200) {
-    const text = (await prxBank.text()) || "";
+  const proxyBank = await fetch(proxyBankUrl);
+  if (proxyBank.status == 200) {
+    const text = (await proxyBank.text()) || "";
 
-    const prxString = text.split("\n").filter(Boolean);
-    cachedPrxList = prxString
+    const proxyString = text.split("\n").filter(Boolean);
+    cachedProxyList = proxyString
       .map((entry) => {
-        const [prxIP, prxPort, country, org] = entry.split(",");
+        const [proxyIP, proxyPort, country, org] = entry.split(",");
         return {
-          prxIP: prxIP || "Unknown",
-          prxPort: prxPort || "Unknown",
+          proxyIP: proxyIP || "Unknown",
+          proxyPort: proxyPort || "Unknown",
           country: country || "Unknown",
           org: org || "Unknown Org",
         };
@@ -73,10 +78,10 @@ async function getPrxList(prxBankUrl = PRX_BANK_URL) {
       .filter(Boolean);
   }
 
-  return cachedPrxList;
+  return cachedProxyList;
 }
 
-async function reverseWeb(request, target, targetPath) {
+async function reverseProxy(request, target, targetPath) {
   const targetUrl = new URL(request.url);
   const targetChunk = target.split(":");
 
@@ -99,218 +104,78 @@ async function reverseWeb(request, target, targetPath) {
   return newResponse;
 }
 
-function generatePagination(totalItems, itemsPerPage, currentPage, request) {
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
-  const urlBase = '/sub';
-  
-  let paginationHtml = '';
-  const maxPagesToShow = 5;
-
-  let startPage = Math.max(0, currentPage - Math.floor(maxPagesToShow / 2));
-  let endPage = Math.min(totalPages, startPage + maxPagesToShow);
-  
-  if (endPage - startPage < maxPagesToShow) {
-    startPage = Math.max(0, endPage - maxPagesToShow);
-  }
-
-  // Tombol "Prev"
-  if (currentPage > 0) {
-    const prevUrl = new URL(request.url);
-    prevUrl.searchParams.set('page', currentPage - 1);
-    paginationHtml += `<a href="${prevUrl.pathname}${prevUrl.search}">Prev</a>`;
-  }
-  
-  // Tombol Halaman
-  for (let i = startPage; i < endPage; i++) {
-    const pageNumber = i + 1;
-    const activeClass = i === currentPage ? 'active' : '';
-    const pageUrl = new URL(request.url);
-    pageUrl.searchParams.set('page', i);
-    paginationHtml += `<a href="${pageUrl.pathname}${pageUrl.search}" class="${activeClass}">${pageNumber}</a>`;
-  }
-
-  // Tombol "Next"
-  if (currentPage < totalPages - 1) {
-    const nextUrl = new URL(request.url);
-    nextUrl.searchParams.set('page', currentPage + 1);
-    paginationHtml += `<a href="${nextUrl.pathname}${nextUrl.search}">Next</a>`;
-  }
-
-  return paginationHtml;
-}
-
-
 function getAllConfig(request, hostName, proxyList, page = 0) {
-  const totalProxies = proxyList.length;
-  const startIndex = page * PROXY_PER_PAGE;
-  const endIndex = Math.min(startIndex + PROXY_PER_PAGE, totalProxies);
-  const paginatedProxyList = proxyList.slice(startIndex, endIndex);
+  const startIndex = PROXY_PER_PAGE * page;
 
-  const fillerDomain = APP_DOMAIN;
+  try {
+    const uuid = crypto.randomUUID();
 
-  const htmlContent = `
-    <!DOCTYPE html>
-    <html lang="id">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Konfigurasi Proxy Nautica</title>
-      <style>
-        body { font-family: 'Poppins', sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; color: #333; }
-        .container { max-width: 900px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .header { text-align: center; margin-bottom: 20px; }
-        .config-list { display: flex; flex-direction: column; gap: 15px; }
-        .config-item { background-color: #f8f9fa; border: 1px solid #e9ecef; border-radius: 6px; padding: 15px; display: flex; flex-direction: column; position: relative; }
-        .config-item h3 { margin: 0 0 10px 0; font-size: 16px; font-weight: 600; color: #555; }
-        .config-url { font-size: 14px; color: #007bff; word-break: break-all; margin-bottom: 10px; }
-        .copy-btn { 
-          background-color: #28a745; 
-          color: white; 
-          border: none; 
-          padding: 8px 12px; 
-          border-radius: 4px; 
-          cursor: pointer; 
-          transition: background-color 0.3s ease;
-          align-self: flex-start;
+    // Build URI
+    const uri = new URL(`${reverse("najort")}://${hostName}`);
+    uri.searchParams.set("encryption", "none");
+    uri.searchParams.set("type", "ws");
+    uri.searchParams.set("host", hostName);
+
+    // Build HTML
+    const document = new Document(request);
+    document.setTitle("Welcome to <span class='text-blue-500 font-semibold'>Yumi Proxy </span>");
+    document.addInfo(`Total: ${proxyList.length}`);
+    document.addInfo(`Page: ${page}/${Math.floor(proxyList.length / PROXY_PER_PAGE)}`);
+
+    for (let i = startIndex; i < startIndex + PROXY_PER_PAGE; i++) {
+      const proxy = proxyList[i];
+      if (!proxy) break;
+
+      const { proxyIP, proxyPort, country, org } = proxy;
+
+      uri.searchParams.set("path", `/${proxyIP}-${proxyPort}`);
+
+      const proxies = [];
+      for (const port of PORTS) {
+        uri.port = port.toString();
+        uri.hash = `${i + 1} ${getFlagEmoji(country)} ${org} WS ${port == 443 ? "TLS" : "NTLS"} [${serviceName}]`;
+        for (const protocol of PROTOCOLS) {
+          // Special exceptions
+          if (protocol === "ss") {
+            uri.username = btoa(`none:${uuid}`);
+            uri.searchParams.set(
+              "plugin",
+              `v2ray-plugin${
+                port == 80 ? "" : ";tls"
+              };mux=0;mode=websocket;path=/${proxyIP}-${proxyPort};host=${hostName}`
+            );
+          } else {
+            uri.username = uuid;
+            uri.searchParams.delete("plugin");
+          }
+
+          uri.protocol = protocol;
+          uri.searchParams.set("security", port == 443 ? "tls" : "none");
+          uri.searchParams.set("sni", port == 80 && protocol == reverse("sselv") ? "" : hostName);
+
+          // Build VPN URI
+          proxies.push(uri.toString());
         }
-        .copy-btn:hover { background-color: #218838; }
-        .copy-btn:active { background-color: #1e7e34; }
-        .pagination { display: flex; justify-content: center; align-items: center; margin-top: 20px; gap: 8px; }
-        .pagination a, .pagination span { padding: 8px 12px; text-decoration: none; color: #007bff; border: 1px solid #007bff; border-radius: 4px; transition: all 0.2s; }
-        .pagination a:hover { background-color: #e9ecef; }
-        .pagination .active { background-color: #007bff; color: white; border-color: #007bff; }
-        .info { text-align: center; margin-top: 20px; color: #666; font-size: 14px; }
-      </style>
-      <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1>Daftar Konfigurasi Proxy</h1>
-          <p>Pilih dan salin konfigurasi yang Anda butuhkan.</p>
-        </div>
-        <div class="config-list">
-          ${paginatedProxyList.map((prx, index) => {
-            const baseId = startIndex + index;
-            const uuid = crypto.randomUUID();
-            
-            // Konfigurasi VLESS, Trojan, SS untuk port 443 (TLS)
-            const vlessUrlTls = new URL(`${atob(flash)}://${fillerDomain}`);
-            vlessUrlTls.searchParams.set("encryption", "none");
-            vlessUrlTls.searchParams.set("type", "ws");
-            vlessUrlTls.searchParams.set("host", APP_DOMAIN);
-            vlessUrlTls.username = uuid;
-            vlessUrlTls.port = "443";
-            vlessUrlTls.searchParams.set("security", "tls");
-            vlessUrlTls.searchParams.set("sni", APP_DOMAIN);
-            vlessUrlTls.searchParams.set("path", `/${prx.prxIP}-${prx.prxPort}`);
-            vlessUrlTls.hash = `${baseId + 1} ${getFlagEmoji(prx.country)} ${prx.org} VLESS/WS/TLS [${serviceName}]`;
+      }
+      document.registerProxies(
+        {
+          proxyIP,
+          proxyPort,
+          country,
+          org,
+        },
+        proxies
+      );
+    }
 
-            const trojanUrlTls = new URL(`${atob(horse)}://${fillerDomain}`);
-            trojanUrlTls.searchParams.set("encryption", "none");
-            trojanUrlTls.searchParams.set("type", "ws");
-            trojanUrlTls.searchParams.set("host", APP_DOMAIN);
-            trojanUrlTls.username = uuid;
-            trojanUrlTls.port = "443";
-            trojanUrlTls.searchParams.set("security", "tls");
-            trojanUrlTls.searchParams.set("sni", APP_DOMAIN);
-            trojanUrlTls.searchParams.set("path", `/${prx.prxIP}-${prx.prxPort}`);
-            trojanUrlTls.hash = `${baseId + 1} ${getFlagEmoji(prx.country)} ${prx.org} Trojan/WS/TLS [${serviceName}]`;
+    // Build pagination
+    document.addPageButton("Prev", `/sub/${page > 0 ? page - 1 : 0}`, page > 0 ? false : true);
+    document.addPageButton("Next", `/sub/${page + 1}`, page < Math.floor(proxyList.length / 10) ? false : true);
 
-            const ssUrlTls = new URL(`ss://${fillerDomain}`);
-            ssUrlTls.username = btoa(`none:${uuid}`);
-            ssUrlTls.searchParams.set("plugin", `${atob(v2)}-plugin;tls;mux=0;mode=websocket;path=/${prx.prxIP}-${prx.prxPort};host=${APP_DOMAIN}`);
-            ssUrlTls.port = "443";
-            ssUrlTls.hash = `${baseId + 1} ${getFlagEmoji(prx.country)} ${prx.org} Shadowsocks/WS/TLS [${serviceName}]`;
-            
-            // Konfigurasi VLESS, Trojan, SS untuk port 80 (NTLS)
-            const vlessUrlNtls = new URL(`${atob(flash)}://${fillerDomain}`);
-            vlessUrlNtls.searchParams.set("encryption", "none");
-            vlessUrlNtls.searchParams.set("type", "ws");
-            vlessUrlNtls.searchParams.set("host", APP_DOMAIN);
-            vlessUrlNtls.username = uuid;
-            vlessUrlNtls.port = "80";
-            vlessUrlNtls.searchParams.set("security", "none");
-            vlessUrlNtls.searchParams.set("sni", ""); // SNI dikosongkan untuk NTLS
-            vlessUrlNtls.searchParams.set("path", `/${prx.prxIP}-${prx.prxPort}`);
-            vlessUrlNtls.hash = `${baseId + 1} ${getFlagEmoji(prx.country)} ${prx.org} VLESS/WS/NTLS [${serviceName}]`;
-
-            const trojanUrlNtls = new URL(`${atob(horse)}://${fillerDomain}`);
-            trojanUrlNtls.searchParams.set("encryption", "none");
-            trojanUrlNtls.searchParams.set("type", "ws");
-            trojanUrlNtls.searchParams.set("host", APP_DOMAIN);
-            trojanUrlNtls.username = uuid;
-            trojanUrlNtls.port = "80";
-            trojanUrlNtls.searchParams.set("security", "none");
-            trojanUrlNtls.searchParams.set("sni", "");
-            trojanUrlNtls.searchParams.set("path", `/${prx.prxIP}-${prx.prxPort}`);
-            trojanUrlNtls.hash = `${baseId + 1} ${getFlagEmoji(prx.country)} ${prx.org} Trojan/WS/NTLS [${serviceName}]`;
-
-            const ssUrlNtls = new URL(`ss://${fillerDomain}`);
-            ssUrlNtls.username = btoa(`none:${uuid}`);
-            ssUrlNtls.searchParams.set("plugin", `${atob(v2)}-plugin;mux=0;mode=websocket;path=/${prx.prxIP}-${prx.prxPort};host=${APP_DOMAIN}`);
-            ssUrlNtls.port = "80";
-            ssUrlNtls.hash = `${baseId + 1} ${getFlagEmoji(prx.country)} ${prx.org} Shadowsocks/WS/NTLS [${serviceName}]`;
-
-            return `
-              <div class="config-item">
-                <h3>${getFlagEmoji(prx.country)} ${prx.org}</h3>
-                <div class="config-details">
-                  <p><strong>VLESS (TLS):</strong></p>
-                  <div class="config-url" id="vless-tls-${baseId}">${vlessUrlTls.toString()}</div>
-                  <button class="copy-btn" onclick="copyConfig('vless-tls-${baseId}')">Copy VLESS TLS</button>
-
-                  <p><strong>VLESS (NTLS):</strong></p>
-                  <div class="config-url" id="vless-ntls-${baseId}">${vlessUrlNtls.toString()}</div>
-                  <button class="copy-btn" onclick="copyConfig('vless-ntls-${baseId}')">Copy VLESS NTLS</button>
-
-                  <p><strong>Trojan (TLS):</strong></p>
-                  <div class="config-url" id="trojan-tls-${baseId}">${trojanUrlTls.toString()}</div>
-                  <button class="copy-btn" onclick="copyConfig('trojan-tls-${baseId}')">Copy Trojan TLS</button>
-
-                  <p><strong>Trojan (NTLS):</strong></p>
-                  <div class="config-url" id="trojan-ntls-${baseId}">${trojanUrlNtls.toString()}</div>
-                  <button class="copy-btn" onclick="copyConfig('trojan-ntls-${baseId}')">Copy Trojan NTLS</button>
-
-                  <p><strong>Shadowsocks (TLS):</strong></p>
-                  <div class="config-url" id="ss-tls-${baseId}">${ssUrlTls.toString()}</div>
-                  <button class="copy-btn" onclick="copyConfig('ss-tls-${baseId}')">Copy SS TLS</button>
-
-                  <p><strong>Shadowsocks (NTLS):</strong></p>
-                  <div class="config-url" id="ss-ntls-${baseId}">${ssUrlNtls.toString()}</div>
-                  <button class="copy-btn" onclick="copyConfig('ss-ntls-${baseId}')">Copy SS NTLS</button>
-                </div>
-              </div>
-            `;
-          }).join('')}
-        </div>
-        <div class="pagination">
-          ${generatePagination(totalProxies, PROXY_PER_PAGE, page, request)}
-        </div>
-        <div class="info">
-          Menampilkan ${paginatedProxyList.length} dari ${totalProxies} konfigurasi.
-        </div>
-      </div>
-      <script>
-        function copyConfig(id) {
-          const configElement = document.getElementById(id);
-          const textToCopy = configElement.innerText;
-          navigator.clipboard.writeText(textToCopy).then(() => {
-            alert('Konfigurasi berhasil disalin!');
-          }).catch(err => {
-            console.error('Gagal menyalin: ', err);
-            alert('Gagal menyalin konfigurasi.');
-          });
-        }
-      </script>
-    </body>
-    </html>
-  `;
-    
-  return new Response(htmlContent, {
-    status: 200,
-    headers: { "Content-Type": "text/html;charset=utf-8" },
-  });
+    return document.build();
+  } catch (error) {
+    return `An error occurred while generating the ${reverse("SSELV")} configurations. ${error}`;
+  }
 }
 
 export default {
@@ -319,51 +184,52 @@ export default {
       const url = new URL(request.url);
       const upgradeHeader = request.headers.get("Upgrade");
 
+      // Gateway check
       if (apiKey && apiEmail && accountID && zoneID) {
         isApiReady = true;
       }
 
+      // Handle proxy client
       if (upgradeHeader === "websocket") {
-        const prxMatch = url.pathname.match(/^\/(.+[:=-]\d+)$/);
+        const proxyMatch = url.pathname.match(/^\/(.+[:=-]\d+)$/);
 
         if (url.pathname.length == 3 || url.pathname.match(",")) {
-          const prxKeys = url.pathname.replace("/", "").toUpperCase().split(",");
-          const prxKey = prxKeys[Math.floor(Math.random() * prxKeys.length)];
-          const kvPrx = await getKVPrxList();
+          // Contoh: /ID, /SG, dll
+          const proxyKeys = url.pathname.replace("/", "").toUpperCase().split(",");
+          const proxyKey = proxyKeys[Math.floor(Math.random() * proxyKeys.length)];
+          const kvProxy = await getKVProxyList();
 
-          prxIP = kvPrx[prxKey][Math.floor(Math.random() * kvPrx[prxKey].length)];
+          proxyIP = kvProxy[proxyKey][Math.floor(Math.random() * kvProxy[proxyKey].length)];
 
           return await websocketHandler(request);
-        } else if (prxMatch) {
-          prxIP = prxMatch[1];
+        } else if (proxyMatch) {
+          proxyIP = proxyMatch[1];
           return await websocketHandler(request);
         }
       }
 
       if (url.pathname.startsWith("/sub")) {
-        const page = parseInt(url.searchParams.get("page") || "0");
+        const page = url.pathname.match(/^\/sub\/(\d+)$/);
+        const pageIndex = parseInt(page ? page[1] : "0");
         const hostname = request.headers.get("Host");
 
-        const countrySelectRaw = url.searchParams.get("cc")?.split(",");
-        let countrySelect = [];
-
-        if (countrySelectRaw) {
-          countrySelect = countrySelectRaw.map(cc => {
-            const normalizedCc = cc.toLowerCase().trim();
-            const countryCodeMap = {};
-            return countryCodeMap[normalizedCc] || cc.toUpperCase().trim();
-          });
-        }
-        
-        const prxBank = url.searchParams.get("proxy-list") || PRX_BANK_URL;
-        let proxyList = (await getPrxList(prxBank)).filter((proxy) => {
-          if (countrySelect.length > 0) {
+        // Queries
+        const countrySelect = url.searchParams.get("cc")?.split(",");
+        const proxyBankUrl = url.searchParams.get("proxy-list") || env.PROXY_BANK_URL;
+        let proxyList = (await getProxyList(proxyBankUrl)).filter((proxy) => {
+          // Filter proxies by Country
+          if (countrySelect) {
             return countrySelect.includes(proxy.country);
           }
+
           return true;
         });
-        
-        return getAllConfig(request, hostname, proxyList, page);
+
+        const result = getAllConfig(request, hostname, proxyList, pageIndex);
+        return new Response(result, {
+          status: 200,
+          headers: { "Content-Type": "text/html;charset=utf-8" },
+        });
       } else if (url.pathname.startsWith("/check")) {
         const target = url.searchParams.get("target").split(":");
         const result = await checkProxyHealth(target[0], target[1] || "443");
@@ -414,70 +280,68 @@ export default {
           const filterFormat = url.searchParams.get("format") || "raw";
           const fillerDomain = url.searchParams.get("domain") || APP_DOMAIN;
 
-          const prxBankUrl = url.searchParams.get("prx-list") || PRX_BANK_URL;
-          const prxList = await getPrxList(prxBankUrl)
-            .then((prxs) => {
+          const proxyBankUrl = url.searchParams.get("proxy-list") || env.PROXY_BANK_URL;
+          const proxyList = await getProxyList(proxyBankUrl)
+            .then((proxies) => {
+              // Filter CC
               if (filterCC.length) {
-                return prxs.filter((prx) => filterCC.includes(prx.country));
+                return proxies.filter((proxy) => filterCC.includes(proxy.country));
               }
-              return prxs;
+              return proxies;
             })
-            .then((prxs) => {
-              shuffleArray(prxs);
-              return prxs;
+            .then((proxies) => {
+              // shuffle result
+              shuffleArray(proxies);
+              return proxies;
             });
 
           const uuid = crypto.randomUUID();
           const result = [];
-          for (const prx of prxList) {
+          for (const proxy of proxyList) {
+            const uri = new URL(`${reverse("najort")}://${fillerDomain}`);
+            uri.searchParams.set("encryption", "none");
+            uri.searchParams.set("type", "ws");
+            uri.searchParams.set("host", APP_DOMAIN);
+
             for (const port of filterPort) {
               for (const protocol of filterVPN) {
                 if (result.length >= filterLimit) break;
 
-                const uri = new URL(`${protocol}://${fillerDomain}`);
+                uri.protocol = protocol;
                 uri.port = port.toString();
-                
-                if (protocol == atob(flash)) { // VLESS
-                  uri.searchParams.set("encryption", "none");
-                  uri.searchParams.set("type", "ws");
-                  uri.searchParams.set("host", APP_DOMAIN);
-                  uri.username = uuid;
-                  uri.searchParams.set("security", port == 443 ? "tls" : "none");
-                  uri.searchParams.set("sni", port == 443 ? APP_DOMAIN : "");
-                  uri.searchParams.set("path", `/${prx.prxIP}-${prx.prxPort}`);
-                  uri.hash = `${result.length + 1} ${getFlagEmoji(prx.country)} ${prx.org} VLESS/WS/${port == 443 ? "TLS" : "NTLS"} [${serviceName}]`;
-                } else if (protocol == atob(horse)) { // Trojan
-                  uri.searchParams.set("encryption", "none");
-                  uri.searchParams.set("type", "ws");
-                  uri.searchParams.set("host", APP_DOMAIN);
-                  uri.username = uuid;
-                  uri.searchParams.set("security", port == 443 ? "tls" : "none");
-                  uri.searchParams.set("sni", port == 443 ? APP_DOMAIN : "");
-                  uri.searchParams.set("path", `/${prx.prxIP}-${prx.prxPort}`);
-                  uri.hash = `${result.length + 1} ${getFlagEmoji(prx.country)} ${prx.org} Trojan/WS/${port == 443 ? "TLS" : "NTLS"} [${serviceName}]`;
-                } else if (protocol == "ss") { // Shadowsocks
+                if (protocol == "ss") {
                   uri.username = btoa(`none:${uuid}`);
                   uri.searchParams.set(
                     "plugin",
-                    `${atob(v2)}-plugin${port == 80 ? "" : ";tls"};mux=0;mode=websocket;path=/${prx.prxIP}-${prx.prxPort};host=${APP_DOMAIN}`
+                    `v2ray-plugin${port == 80 ? "" : ";tls"};mux=0;mode=websocket;path=/${proxy.proxyIP}-${
+                      proxy.proxyPort
+                    };host=${APP_DOMAIN}`
                   );
-                  uri.hash = `${result.length + 1} ${getFlagEmoji(prx.country)} ${prx.org} Shadowsocks/WS/${port == 443 ? "TLS" : "NTLS"} [${serviceName}]`;
+                } else {
+                  uri.username = uuid;
                 }
 
+                uri.searchParams.set("security", port == 443 ? "tls" : "none");
+                uri.searchParams.set("sni", port == 80 && protocol == reverse("sselv") ? "" : APP_DOMAIN);
+                uri.searchParams.set("path", `/${proxy.proxyIP}-${proxy.proxyPort}`);
+
+                uri.hash = `${result.length + 1} ${getFlagEmoji(proxy.country)} ${proxy.org} WS ${
+                  port == 443 ? "TLS" : "NTLS"
+                } [${serviceName}]`;
                 result.push(uri.toString());
               }
             }
           }
-          
+
           let finalResult = "";
           switch (filterFormat) {
             case "raw":
               finalResult = result.join("\n");
               break;
-            case atob(v2):
+            case "v2ray":
               finalResult = btoa(result.join("\n"));
               break;
-            case atob(neko):
+            case "clash":
             case "sfa":
             case "bfr":
               const res = await fetch(CONVERTER_URL, {
@@ -526,8 +390,8 @@ export default {
         }
       }
 
-      const targetReversePrx = env.REVERSE_PRX_TARGET || "example.com";
-      return await reverseWeb(request, targetReversePrx);
+      const targetReverseProxy = env.REVERSE_PROXY_TARGET || "example.com";
+      return await reverseProxy(request, targetReverseProxy);
     } catch (err) {
       return new Response(`An error occurred: ${err.toString()}`, {
         status: 500,
@@ -576,12 +440,12 @@ async function websocketHandler(request) {
           const protocol = await protocolSniffer(chunk);
           let protocolHeader;
 
-          if (protocol === atob(horse)) {
-            protocolHeader = readHorseHeader(chunk);
-          } else if (protocol === atob(flash)) {
-            protocolHeader = readFlashHeader(chunk);
-          } else if (protocol === "ss") {
-            protocolHeader = readSsHeader(chunk);
+          if (protocol === reverse("najorT")) {
+            protocolHeader = parseNajortHeader(chunk);
+          } else if (protocol === reverse("SSELV")) {
+            protocolHeader = parseSselvHeader(chunk);
+          } else if (protocol === reverse("skcoswodahS")) {
+            protocolHeader = parseSsHeader(chunk);
           } else {
             throw new Error("Unknown Protocol!");
           }
@@ -597,6 +461,7 @@ async function websocketHandler(request) {
             if (protocolHeader.portRemote === 53) {
               isDNS = true;
             } else {
+              // return handleUDPOutbound(protocolHeader.addressRemote, protocolHeader.portRemote, chunk, webSocket, protocolHeader.version, log);
               throw new Error("UDP only support for DNS port 53");
             }
           }
@@ -642,22 +507,23 @@ async function websocketHandler(request) {
 
 async function protocolSniffer(buffer) {
   if (buffer.byteLength >= 62) {
-    const horseDelimiter = new Uint8Array(buffer.slice(56, 60));
-    if (horseDelimiter[0] === 0x0d && horseDelimiter[1] === 0x0a) {
-      if (horseDelimiter[2] === 0x01 || horseDelimiter[2] === 0x03 || horseDelimiter[2] === 0x7f) {
-        if (horseDelimiter[3] === 0x01 || horseDelimiter[3] === 0x03 || horseDelimiter[3] === 0x04) {
-          return atob(horse);
+    const najortDelimiter = new Uint8Array(buffer.slice(56, 60));
+    if (najortDelimiter[0] === 0x0d && najortDelimiter[1] === 0x0a) {
+      if (najortDelimiter[2] === 0x01 || najortDelimiter[2] === 0x03 || najortDelimiter[2] === 0x7f) {
+        if (najortDelimiter[3] === 0x01 || najortDelimiter[3] === 0x03 || najortDelimiter[3] === 0x04) {
+          return reverse("najorT");
         }
       }
     }
   }
 
-  const flashDelimiter = new Uint8Array(buffer.slice(1, 17));
-  if (arrayBufferToHex(flashDelimiter).match(/^[0-9a-f]{8}[0-9a-f]{4}4[0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12}$/i)) {
-    return atob(flash);
+  const sselvDelimiter = new Uint8Array(buffer.slice(1, 17));
+  // Hanya mendukung UUID v4
+  if (arrayBufferToHex(sselvDelimiter).match(/^[0-9a-f]{8}[0-9a-f]{4}4[0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12}$/i)) {
+    return reverse("SSELV");
   }
 
-  return "ss";
+  return reverse("skcoswodahS"); // default
 }
 
 async function handleTCPOutBound(
@@ -685,8 +551,8 @@ async function handleTCPOutBound(
 
   async function retry() {
     const tcpSocket = await connectAndWrite(
-      prxIP.split(/[:=-]/)[0] || addressRemote,
-      prxIP.split(/[:=-]/)[1] || portRemote
+      proxyIP.split(/[:=-]/)[0] || addressRemote,
+      proxyIP.split(/[:=-]/)[1] || portRemote
     );
     tcpSocket.closed
       .catch((error) => {
@@ -786,7 +652,7 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
   return stream;
 }
 
-function readSsHeader(ssBuffer) {
+function parseSsHeader(ssBuffer) {
   const view = new DataView(ssBuffer);
 
   const addressType = view.getUint8(0);
@@ -816,7 +682,7 @@ function readSsHeader(ssBuffer) {
     default:
       return {
         hasError: true,
-        message: `Invalid addressType for SS: ${addressType}`,
+        message: `Invalid addressType for ${reverse("skcoswodahS")}: ${addressType}`,
       };
   }
 
@@ -842,7 +708,7 @@ function readSsHeader(ssBuffer) {
   };
 }
 
-function readFlashHeader(buffer) {
+function parseSselvHeader(buffer) {
   const version = new Uint8Array(buffer.slice(0, 1));
   let isUDP = false;
 
@@ -855,7 +721,7 @@ function readFlashHeader(buffer) {
   } else {
     return {
       hasError: true,
-      message: `command ${cmd} is not supported`,
+      message: `command ${cmd} is not support, command 01-tcp,02-udp,03-mux`,
     };
   }
   const portIndex = 18 + optLength + 1;
@@ -870,16 +736,16 @@ function readFlashHeader(buffer) {
   let addressValueIndex = addressIndex + 1;
   let addressValue = "";
   switch (addressType) {
-    case 1:
+    case 1: // For IPv4
       addressLength = 4;
       addressValue = new Uint8Array(buffer.slice(addressValueIndex, addressValueIndex + addressLength)).join(".");
       break;
-    case 2:
+    case 2: // For Domain
       addressLength = new Uint8Array(buffer.slice(addressValueIndex, addressValueIndex + 1))[0];
       addressValueIndex += 1;
       addressValue = new TextDecoder().decode(buffer.slice(addressValueIndex, addressValueIndex + addressLength));
       break;
-    case 3:
+    case 3: // For IPv6
       addressLength = 16;
       const dataView = new DataView(buffer.slice(addressValueIndex, addressValueIndex + addressLength));
       const ipv6 = [];
@@ -913,17 +779,17 @@ function readFlashHeader(buffer) {
   };
 }
 
-function readHorseHeader(buffer) {
-  const dataBuffer = buffer.slice(58);
-  if (dataBuffer.byteLength < 6) {
+function parseNajortHeader(buffer) {
+  const socks5DataBuffer = buffer.slice(58);
+  if (socks5DataBuffer.byteLength < 6) {
     return {
       hasError: true,
-      message: "invalid request data",
+      message: "invalid SOCKS5 request data",
     };
   }
 
   let isUDP = false;
-  const view = new DataView(dataBuffer);
+  const view = new DataView(socks5DataBuffer);
   const cmd = view.getUint8(0);
   if (cmd == 3) {
     isUDP = true;
@@ -936,18 +802,22 @@ function readHorseHeader(buffer) {
   let addressValueIndex = 2;
   let addressValue = "";
   switch (addressType) {
-    case 1:
+    case 1: // For IPv4
       addressLength = 4;
-      addressValue = new Uint8Array(dataBuffer.slice(addressValueIndex, addressValueIndex + addressLength)).join(".");
+      addressValue = new Uint8Array(socks5DataBuffer.slice(addressValueIndex, addressValueIndex + addressLength)).join(
+        "."
+      );
       break;
-    case 3:
-      addressLength = new Uint8Array(dataBuffer.slice(addressValueIndex, addressValueIndex + 1))[0];
+    case 3: // For Domain
+      addressLength = new Uint8Array(socks5DataBuffer.slice(addressValueIndex, addressValueIndex + 1))[0];
       addressValueIndex += 1;
-      addressValue = new TextDecoder().decode(dataBuffer.slice(addressValueIndex, addressValueIndex + addressLength));
+      addressValue = new TextDecoder().decode(
+        socks5DataBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
+      );
       break;
-    case 4:
+    case 4: // For IPv6
       addressLength = 16;
-      const dataView = new DataView(dataBuffer.slice(addressValueIndex, addressValueIndex + addressLength));
+      const dataView = new DataView(socks5DataBuffer.slice(addressValueIndex, addressValueIndex + addressLength));
       const ipv6 = [];
       for (let i = 0; i < 8; i++) {
         ipv6.push(dataView.getUint16(i * 2).toString(16));
@@ -969,7 +839,7 @@ function readHorseHeader(buffer) {
   }
 
   const portIndex = addressValueIndex + addressLength;
-  const portBuffer = dataBuffer.slice(portIndex, portIndex + 2);
+  const portBuffer = socks5DataBuffer.slice(portIndex, portIndex + 2);
   const portRemote = new DataView(portBuffer).getUint16(0);
   return {
     hasError: false,
@@ -977,11 +847,44 @@ function readHorseHeader(buffer) {
     addressType: addressType,
     portRemote: portRemote,
     rawDataIndex: portIndex + 4,
-    rawClientData: dataBuffer.slice(portIndex + 4),
+    rawClientData: socks5DataBuffer.slice(portIndex + 4),
     version: null,
     isUDP: isUDP,
   };
 }
+
+// function parseSsemvHeader(buffer) {
+//   const date = new Date(new Date().toLocaleString("en", { timeZone: "Asia/Jakarta" }));
+//   console.log(`Date: ${date}`);
+//   console.log(`First 16 bytes: ${arrayBufferToHex(buffer.slice(0, 17))}`);
+//   console.log(`Remaining bytes: ${arrayBufferToHex(buffer.slice(17))}`);
+
+//   // ===== KEY GENERATION =====
+//   const userId = "3b670322-6ac1-41ec-9ff3-714245d41bf7";
+//   const uuidConst = "c48619fe-8f02-49e0-b9e9-edf763e17e21";
+
+//   // Step 1: Generate AES key
+//   const key = createHash("md5")
+//     .update(userId + uuidConst)
+//     .digest();
+//   console.log(`KEY: ${key}`);
+
+//   // Step 2: Generate Timestamp (current Unix time)
+//   const timestamp = Math.floor(date.getTime() / 1000); // current timestamp in seconds
+
+//   // Step 3: Generate IV from Timestamp
+//   const x = Buffer.alloc(8);
+//   x.writeBigUInt64BE(BigInt(timestamp)); // 8-byte timestamp (Big Endian)
+//   const iv_source = Buffer.concat([x, x, x, x]);
+//   const iv = createHash("md5").update(iv_source).digest();
+//   console.log(`IV: ${iv}`);
+
+//   // Step 4: Decrypt using AES-128-CFB
+//   const decipher = createDecipheriv("aes-128-cfb", key, iv);
+//   const decrypted = Buffer.concat([decipher.update(buffer.slice(17)), decipher.final()]);
+
+//   console.log(`Decrypted Header: ${decrypted.toString("hex")}`);
+// }
 
 async function remoteSocketToWS(remoteSocket, webSocket, responseHeader, retry, log) {
   let header = responseHeader;
@@ -1030,11 +933,12 @@ function safeCloseWebSocket(socket) {
   }
 }
 
-async function checkPrxHealth(prxIP, prxPort) {
-  const req = await fetch(`${PRX_HEALTH_CHECK_API}?ip=${prxIP}:${prxPort}`);
+async function checkProxyHealth(proxyIP, proxyPort) {
+  const req = await fetch(`${PROXY_HEALTH_CHECK_API}?ip=${proxyIP}&port=${proxyPort}`);
   return await req.json();
 }
 
+// Helpers
 function base64ToArrayBuffer(base64Str) {
   if (!base64Str) {
     return { error: null };
@@ -1056,12 +960,24 @@ function arrayBufferToHex(buffer) {
 function shuffleArray(array) {
   let currentIndex = array.length;
 
+  // While there remain elements to shuffle...
   while (currentIndex != 0) {
+    // Pick a remaining element...
     let randomIndex = Math.floor(Math.random() * currentIndex);
     currentIndex--;
 
+    // And swap it with the current element.
     [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
   }
+}
+
+async function generateHashFromText(text) {
+  const msgUint8 = new TextEncoder().encode(text); // encode as (utf-8) Uint8Array
+  const hashBuffer = await crypto.subtle.digest("MD5", msgUint8); // hash the message
+  const hashArray = Array.from(new Uint8Array(hashBuffer)); // convert buffer to byte array
+  const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join(""); // convert bytes to hex string
+
+  return hashHex;
 }
 
 function reverse(s) {
@@ -1076,6 +992,7 @@ function getFlagEmoji(isoCode) {
   return String.fromCodePoint(...codePoints);
 }
 
+// CloudflareApi Class
 class CloudflareApi {
   constructor() {
     this.bearer = `Bearer ${apiKey}`;
@@ -1149,5 +1066,615 @@ class CloudflareApi {
     });
 
     return res.status;
+  }
+}
+
+// HTML page base
+/**
+ * Cloudflare worker gak support DOM API, tetapi mereka menggunakan HTML Rewriter.
+ * Tapi, karena kelihatannta repot kalo pake HTML Rewriter. Kita pake cara konfensional saja...
+ */
+let baseHTML = `
+<!DOCTYPE html>
+<html lang="en" id="html" class="scroll-auto scrollbar-hide dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Yumi - Proxy List</title>
+    <link rel="icon" type="image/x-icon"
+			href="https://github.com/user-attachments/assets/54516e96-2d3a-42d5-8621-3ced0d3e0ce7">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      /* For Webkit-based browsers (Chrome, Safari and Opera) */
+      .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+      }
+
+      /* For IE, Edge and Firefox */
+      .scrollbar-hide {
+          -ms-overflow-style: none;  /* IE and Edge */
+          scrollbar-width: none;  /* Firefox */
+      }
+    </style>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/lozad/dist/lozad.min.js"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'selector',
+      }
+    </script>
+  </head>
+  <body class="bg-white dark:bg-neutral-800 bg-fixed">
+    <!-- Notification -->
+    <div
+      id="notification-badge"
+      class="fixed z-50 opacity-0 transition-opacity ease-in-out duration-300 mt-9 mr-6 right-0 p-3 max-w-sm bg-white rounded-xl border border-2 border-neutral-800 flex items-center gap-x-4"
+    >
+      <div class="shrink-0">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#171717" class="size-6">
+          <path
+            d="M5.85 3.5a.75.75 0 0 0-1.117-1 9.719 9.719 0 0 0-2.348 4.876.75.75 0 0 0 1.479.248A8.219 8.219 0 0 1 5.85 3.5ZM19.267 2.5a.75.75 0 1 0-1.118 1 8.22 8.22 0 0 1 1.987 4.124.75.75 0 0 0 1.48-.248A9.72 9.72 0 0 0 19.266 2.5Z"
+          />
+          <path
+            fill-rule="evenodd"
+            d="M12 2.25A6.75 6.75 0 0 0 5.25 9v.75a8.217 8.217 0 0 1-2.119 5.52.75.75 0 0 0 .298 1.206c1.544.57 3.16.99 4.831 1.243a3.75 3.75 0 1 0 7.48 0 24.583 24.583 0 0 0 4.83-1.244.75.75 0 0 0 .298-1.205 8.217 8.217 0 0 1-2.118-5.52V9A6.75 6.75 0 0 0 12 2.25ZM9.75 18c0-.034 0-.067.002-.1a25.05 25.05 0 0 0 4.496 0l.002.1a2.25 2.25 0 1 1-4.5 0Z"
+            clip-rule="evenodd"
+          />
+        </svg>
+      </div>
+      <div>
+        <div class="text-md font-bold text-blue-500">Berhasil!</div>
+        <p class="text-sm text-neutral-800">Akun berhasil disalin</p>
+      </div>
+    </div>
+    <!-- Select Country -->
+    <div>
+      <div
+        class="h-full fixed top-0 w-14 bg-white dark:bg-neutral-800 border-r-2 border-neutral-800 dark:border-white z-20 overflow-y-scroll scrollbar-hide"
+      >
+        <div class="text-2xl flex flex-col items-center h-full gap-2">
+          PLACEHOLDER_BENDERA_NEGARA
+        </div>
+      </div>
+    </div>
+    <!-- Main -->
+    <div id="container-header">
+      <div id="container-info" class="bg-amber-400 border-2 border-neutral-800 text-right px-5">
+        <div class="flex justify-end gap-3 text-sm">
+          <p id="container-info-ip">IP: 127.0.0.1</p>
+          <p id="container-info-country">Country: Indonesia</p>
+          <p id="container-info-isp">ISP: Localhost</p>
+        </div>
+      </div>
+    </div>
+    <div class="container">
+      <div
+        id="container-title"
+        class="sticky bg-white dark:bg-neutral-800 border-b-2 border-neutral-800 dark:border-white z-10 py-6 w-screen"
+      >
+        <h1 class="text-xl text-center text-neutral-800 dark:text-white">
+          PLACEHOLDER_JUDUL
+        </h1>
+      </div>
+      <div class="flex gap-6 pt-10 w-screen justify-center">
+        PLACEHOLDER_PROXY_GROUP
+      </div>
+
+      <!-- Pagination -->
+      <nav id="container-pagination" class="w-screen mt-8 sticky bottom-0 right-0 left-0 transition -translate-y-6 z-20">
+        <ul class="flex justify-center space-x-4">
+          PLACEHOLDER_PAGE_BUTTON
+        </ul>
+      </nav>
+    </div>
+
+    <div id="container-window" class="hidden">
+      <!-- Windows -->
+      <!-- Informations -->
+      <div class="fixed z-20 top-0 w-full h-full bg-white dark:bg-neutral-800">
+        <p id="container-window-info" class="text-center w-full h-full top-1/4 absolute dark:text-white"></p>
+      </div>
+      <!-- Output Format -->
+      <div id="output-window" class="fixed z-20 top-0 right-0 w-full h-full flex justify-center items-center hidden">
+        <div class="w-[75%] h-[30%] flex flex-col gap-1 p-1 text-center rounded-md">
+          <div class="basis-1/6 w-full h-full rounded-md">
+            <div class="flex w-full h-full gap-1 justify-between">
+              <button
+                onclick="copyToClipboardAsTarget('clash')"
+                class="basis-1/2 p-2 rounded-full bg-amber-400 flex justify-center items-center"
+              >
+                Clash
+              </button>
+              <button
+                onclick="copyToClipboardAsTarget('sfa')"
+                class="basis-1/2 p-2 rounded-full bg-amber-400 flex justify-center items-center"
+              >
+                SFA
+              </button>
+              <button
+                onclick="copyToClipboardAsTarget('bfr')"
+                class="basis-1/2 p-2 rounded-full bg-amber-400 flex justify-center items-center"
+              >
+                BFR
+              </button>
+            </div>
+          </div>
+          <div class="basis-1/6 w-full h-full rounded-md">
+            <div class="flex w-full h-full gap-1 justify-between">
+              <button
+                onclick="copyToClipboardAsTarget('v2ray')"
+                class="basis-1/2 p-2 rounded-full bg-amber-400 flex justify-center items-center"
+              >
+                V2Ray/Xray
+              </button>
+              <button
+                onclick="copyToClipboardAsRaw()"
+                class="basis-1/2 p-2 rounded-full bg-amber-400 flex justify-center items-center"
+              >
+                Raw
+              </button>
+            </div>
+          </div>
+          <div class="basis-1/6 w-full h-full rounded-md">
+            <div class="flex w-full h-full gap-1 justify-center">
+              <button
+                onclick="toggleOutputWindow()"
+                class="basis-1/2 border-2 border-indigo-400 hover:bg-indigo-400 dark:text-white p-2 rounded-full flex justify-center items-center"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Wildcards -->
+      <div id="wildcards-window" class="fixed hidden z-20 top-0 right-0 w-full h-full flex justify-center items-center">
+        <div class="w-[75%] h-[30%] flex flex-col gap-1 p-1 text-center rounded-md">
+          <div class="basis-1/6 w-full h-full rounded-md">
+            <div class="flex w-full h-full gap-1 justify-between">
+              <input
+                id="new-domain-input"
+                type="text"
+                placeholder="Input wildcard"
+                class="basis-11/12 w-full h-full px-6 rounded-md focus:outline-0"
+              />
+              <button
+                onclick="registerDomain()"
+                class="p-2 rounded-full bg-amber-400 flex justify-center items-center"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="size-6">
+                  <path
+                    fill-rule="evenodd"
+                    d="M16.72 7.72a.75.75 0 0 1 1.06 0l3.75 3.75a.75.75 0 0 1 0 1.06l-3.75 3.75a.75.75 0 1 1-1.06-1.06l2.47-2.47H3a.75.75 0 0 1 0-1.5h16.19l-2.47-2.47a.75.75 0 0 1 0-1.06Z"
+                    clip-rule="evenodd"
+                  ></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="basis-5/6 w-full h-full rounded-md">
+            <div
+              id="container-domains"
+              class="w-full h-full rounded-md flex flex-col gap-1 overflow-scroll scrollbar-hide"
+            ></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      <div class="fixed bottom-3 right-3 flex flex-col gap-1 z-50">
+        <a href="${DONATE_LINK}" target="_blank">
+          <button class="bg-green-500 rounded-full border-2 border-neutral-800 p-1 block">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="size-6">
+              <path
+                d="M10.464 8.746c.227-.18.497-.311.786-.394v2.795a2.252 2.252 0 0 1-.786-.393c-.394-.313-.546-.681-.546-1.004 0-.323.152-.691.546-1.004ZM12.75 15.662v-2.824c.347.085.664.228.921.421.427.32.579.686.579.991 0 .305-.152.671-.579.991a2.534 2.534 0 0 1-.921.42Z"
+              />
+              <path
+                fill-rule="evenodd"
+                d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25ZM12.75 6a.75.75 0 0 0-1.5 0v.816a3.836 3.836 0 0 0-1.72.756c-.712.566-1.112 1.35-1.112 2.178 0 .829.4 1.612 1.113 2.178.502.4 1.102.647 1.719.756v2.978a2.536 2.536 0 0 1-.921-.421l-.879-.66a.75.75 0 0 0-.9 1.2l.879.66c.533.4 1.169.645 1.821.75V18a.75.75 0 0 0 1.5 0v-.81a4.124 4.124 0 0 0 1.821-.749c.745-.559 1.179-1.344 1.179-2.191 0-.847-.434-1.632-1.179-2.191a4.122 4.122 0 0 0-1.821-.75V8.354c.29.082.559.213.786.393l.415.33a.75.75 0 0 0 .933-1.175l-.415-.33a3.836 3.836 0 0 0-1.719-.755V6Z"
+                clip-rule="evenodd"
+              />
+            </svg>
+          </button>
+        </a>
+        <button onclick="toggleWildcardsWindow()" class="bg-indigo-400 rounded-full border-2 border-neutral-800 p-1 PLACEHOLDER_API_READY">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke-width="1.5"
+            stroke="currentColor"
+            class="size-6"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M9 9V4.5M9 9H4.5M9 9 3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5 5.25 5.25"
+            />
+          </svg>
+        </button>
+        <button onclick="toggleDarkMode()" class="bg-amber-400 rounded-full border-2 border-neutral-800 p-1">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke-width="1.5"
+            stroke="currentColor"
+            class="size-6"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z"
+            ></path>
+          </svg>
+        </button>
+      </div>
+    </footer>
+
+    <script>
+      // Shared
+      const rootDomain = "${serviceName}.${rootDomain}";
+      const notification = document.getElementById("notification-badge");
+      const windowContainer = document.getElementById("container-window");
+      const windowInfoContainer = document.getElementById("container-window-info");
+      const converterUrl =
+        "https://script.google.com/macros/s/AKfycbwwVeHNUlnP92syOP82p1dOk_-xwBgRIxkTjLhxxZ5UXicrGOEVNc5JaSOu0Bgsx_gG/exec";
+
+
+      // Switches
+      let isDomainListFetched = false;
+
+      // Local variable
+      let rawConfig = "";
+
+      function getDomainList() {
+        if (isDomainListFetched) return;
+        isDomainListFetched = true;
+
+        windowInfoContainer.innerText = "Fetching data...";
+
+        const url = "https://" + rootDomain + "/api/v1/domains/get";
+        const res = fetch(url).then(async (res) => {
+          const domainListContainer = document.getElementById("container-domains");
+          domainListContainer.innerHTML = "";
+
+          if (res.status == 200) {
+            windowInfoContainer.innerText = "Done!";
+            const respJson = await res.json();
+            for (const domain of respJson) {
+              const domainElement = document.createElement("p");
+              domainElement.classList.add("w-full", "bg-amber-400", "rounded-md");
+              domainElement.innerText = domain;
+              domainListContainer.appendChild(domainElement);
+            }
+          } else {
+            windowInfoContainer.innerText = "Failed!";
+          }
+        });
+      }
+
+      function registerDomain() {
+        const domainInputElement = document.getElementById("new-domain-input");
+        const rawDomain = domainInputElement.value.toLowerCase();
+        const domain = domainInputElement.value + "." + rootDomain;
+
+        if (!rawDomain.match(/\\w+\\.\\w+$/) || rawDomain.endsWith(rootDomain)) {
+          windowInfoContainer.innerText = "Invalid URL!";
+          return;
+        }
+
+        windowInfoContainer.innerText = "Pushing request...";
+
+        const url = "https://" + rootDomain + "/api/v1/domains/put?domain=" + domain;
+        const res = fetch(url).then((res) => {
+          if (res.status == 200) {
+            windowInfoContainer.innerText = "Done!";
+            domainInputElement.value = "";
+            isDomainListFetched = false;
+            getDomainList();
+          } else {
+            if (res.status == 409) {
+              windowInfoContainer.innerText = "Domain exists!";
+            } else {
+              windowInfoContainer.innerText = "Error " + res.status;
+            }
+          }
+        });
+      }
+
+      function copyToClipboard(text) {
+        toggleOutputWindow();
+        rawConfig = text;
+      }
+
+      function copyToClipboardAsRaw() {
+        navigator.clipboard.writeText(rawConfig);
+
+        notification.classList.remove("opacity-0");
+        setTimeout(() => {
+          notification.classList.add("opacity-0");
+        }, 2000);
+      }
+
+      async function copyToClipboardAsTarget(target) {
+        windowInfoContainer.innerText = "Generating config...";
+        const url = "${CONVERTER_URL}";
+        const res = await fetch(url, {
+          method: "POST",
+          body: JSON.stringify({
+            url: rawConfig,
+            format: target,
+            template: "cf",
+          }),
+        });
+
+        if (res.status == 200) {
+          windowInfoContainer.innerText = "Done!";
+          navigator.clipboard.writeText(await res.text());
+
+          notification.classList.remove("opacity-0");
+          setTimeout(() => {
+            notification.classList.add("opacity-0");
+          }, 2000);
+        } else {
+          windowInfoContainer.innerText = "Error " + res.statusText;
+        }
+      }
+
+      function navigateTo(link) {
+        window.location.href = link + window.location.search;
+      }
+
+      function toggleOutputWindow() {
+        windowInfoContainer.innerText = "Select output:";
+        toggleWindow();
+        const rootElement = document.getElementById("output-window");
+        if (rootElement.classList.contains("hidden")) {
+          rootElement.classList.remove("hidden");
+        } else {
+          rootElement.classList.add("hidden");
+        }
+      }
+
+      function toggleWildcardsWindow() {
+        windowInfoContainer.innerText = "Domain list";
+        toggleWindow();
+        getDomainList();
+        const rootElement = document.getElementById("wildcards-window");
+        if (rootElement.classList.contains("hidden")) {
+          rootElement.classList.remove("hidden");
+        } else {
+          rootElement.classList.add("hidden");
+        }
+      }
+
+      function toggleWindow() {
+        if (windowContainer.classList.contains("hidden")) {
+          windowContainer.classList.remove("hidden");
+        } else {
+          windowContainer.classList.add("hidden");
+        }
+      }
+
+      function toggleDarkMode() {
+        const rootElement = document.getElementById("html");
+        if (rootElement.classList.contains("dark")) {
+          rootElement.classList.remove("dark");
+        } else {
+          rootElement.classList.add("dark");
+        }
+      }
+
+      function checkProxy() {
+        for (let i = 0; ; i++) {
+          const pingElement = document.getElementById("ping-"+i);
+          if (pingElement == undefined) return;
+
+          const target = pingElement.textContent.split(" ").filter((ipPort) => ipPort.match(":"))[0];
+          if (target) {
+            pingElement.textContent = "Checking...";
+          } else {
+            continue;
+          }
+
+          let isActive = false;
+          new Promise(async (resolve) => {
+            const res = await fetch("https://${serviceName}.${rootDomain}/check?target=" + target)
+              .then(async (res) => {
+                if (isActive) return;
+                if (res.status == 200) {
+                  pingElement.classList.remove("dark:text-white");
+                  const jsonResp = await res.json();
+                  if (jsonResp.proxyip === true) {
+                    isActive = true;
+                    pingElement.textContent = "Active " + jsonResp.delay  + " "+"(" + jsonResp.colo + ")";
+                    pingElement.classList.add("text-green-600");
+                  } else {
+                    pingElement.textContent = "Inactive";
+                    pingElement.classList.add("text-red-600");
+                  }
+                } else {
+                  pingElement.textContent = "Check Failed!";
+                }
+              })
+              .finally(() => {
+                resolve(0);
+              });
+          });
+        }
+      }
+
+      function checkRegion() {
+        for (let i = 0; ; i++) {
+          console.log("Halo " + i)
+          const containerRegionCheck = document.getElementById("container-region-check-" + i);
+          const configSample = document.getElementById("config-sample-" + i).value.replaceAll(" ", "");
+          if (containerRegionCheck == undefined) break;
+
+          const res = fetch(
+            "https://api.foolvpn.me/regioncheck?config=" + encodeURIComponent(configSample)
+          ).then(async (res) => {
+            if (res.status == 200) {
+              containerRegionCheck.innerHTML = "<hr>";
+              for (const result of await res.json()) {
+                containerRegionCheck.innerHTML += "<p>" + result.name + ": " + result.region + "</p>";
+              }
+            }
+          });
+        }
+      }
+
+      function checkGeoip() {
+        const containerIP = document.getElementById("container-info-ip");
+        const containerCountry = document.getElementById("container-info-country");
+        const containerISP = document.getElementById("container-info-isp");
+        const res = fetch("https://" + rootDomain + "/api/v1/myip").then(async (res) => {
+          if (res.status == 200) {
+            const respJson = await res.json();
+            containerIP.innerText = "IP: " + respJson.ip;
+            containerCountry.innerText = "Country: " + respJson.country;
+            containerISP.innerText = "ISP: " + respJson.asOrganization;
+          }
+        });
+      }
+
+      window.onload = () => {
+        checkGeoip();
+        checkProxy();
+        // checkRegion();
+
+        const observer = lozad(".lozad", {
+          load: function (el) {
+            el.classList.remove("scale-95");
+          },
+        });
+        observer.observe();
+      };
+
+      window.onscroll = () => {
+        const paginationContainer = document.getElementById("container-pagination");
+
+        if (window.innerHeight + Math.round(window.scrollY) >= document.body.offsetHeight) {
+          paginationContainer.classList.remove("-translate-y-6");
+        } else {
+          paginationContainer.classList.add("-translate-y-6");
+        }
+      };
+    </script>
+    </body>
+
+</html>
+`;
+
+class Document {
+  proxies = [];
+
+  constructor(request) {
+    this.html = baseHTML;
+    this.request = request;
+    this.url = new URL(this.request.url);
+  }
+
+  setTitle(title) {
+    this.html = this.html.replaceAll("PLACEHOLDER_JUDUL", title);
+  }
+
+  addInfo(text) {
+    text = `<span>${text}</span>`;
+    this.html = this.html.replaceAll("PLACEHOLDER_INFO", `${text}\nPLACEHOLDER_INFO`);
+  }
+
+  registerProxies(data, proxies) {
+    this.proxies.push({
+      ...data,
+      list: proxies,
+    });
+  }
+
+  buildProxyGroup() {
+    let proxyGroupElement = "";
+    proxyGroupElement += `<div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">`;
+    for (let i = 0; i < this.proxies.length; i++) {
+      const proxyData = this.proxies[i];
+
+      // Assign proxies
+      proxyGroupElement += `<div class="lozad scale-95 mb-2 bg-white dark:bg-neutral-800 transition-transform duration-200 rounded-lg p-4 w-60 border-2 border-neutral-800">`;
+      proxyGroupElement += `  <div id="countryFlag" class="absolute -translate-y-9 -translate-x-2 border-2 border-neutral-800 rounded-full overflow-hidden"><img width="32" src="https://hatscripts.github.io/circle-flags/flags/${proxyData.country.toLowerCase()}.svg" /></div>`;
+      proxyGroupElement += `  <div>`;
+      proxyGroupElement += `    <div id="ping-${i}" class="animate-pulse text-xs font-semibold dark:text-white">Idle ${proxyData.proxyIP}:${proxyData.proxyPort}</div>`;
+      proxyGroupElement += `  </div>`;
+      proxyGroupElement += `  <div class="rounded py-1 px-2 bg-amber-400 dark:bg-neutral-800 dark:border-2 dark:border-amber-400">`;
+      proxyGroupElement += `    <h5 class="font-bold text-md text-neutral-900 dark:text-white mb-1 overflow-x-scroll scrollbar-hide text-nowrap">${proxyData.org}</h5>`;
+      proxyGroupElement += `    <div class="text-neutral-900 dark:text-white text-sm">`;
+      proxyGroupElement += `      <p>IP: ${proxyData.proxyIP}</p>`;
+      proxyGroupElement += `      <p>Port: ${proxyData.proxyPort}</p>`;
+      proxyGroupElement += `      <div id="container-region-check-${i}">`;
+      proxyGroupElement += `        <input id="config-sample-${i}" class="hidden" type="text" value="${proxyData.list[0]}">`;
+      proxyGroupElement += `      </div>`;
+      proxyGroupElement += `    </div>`;
+      proxyGroupElement += `  </div>`;
+      proxyGroupElement += `  <div class="flex flex-col gap-2 mt-3 text-sm">`;
+      for (let x = 0; x < proxyData.list.length; x++) {
+        const indexName = [
+          `${reverse("NAJORT")} TLS`,
+          `${reverse("SSELV")} TLS`,
+          `${reverse("SS")} TLS`,
+          `${reverse("NAJORT")} NTLS`,
+          `${reverse("SSELV")} NTLS`,
+          `${reverse("SS")} NTLS`,
+        ];
+        const proxy = proxyData.list[x];
+
+        if (x % 2 == 0) {
+          proxyGroupElement += `<div class="flex gap-2 justify-around w-full">`;
+        }
+
+        proxyGroupElement += `<button class="bg-blue-500 dark:bg-neutral-800 dark:border-2 dark:border-blue-500 rounded p-1 w-full text-white" onclick="copyToClipboard('${proxy}')">${indexName[x]}</button>`;
+
+        if (x % 2 == 1) {
+          proxyGroupElement += `</div>`;
+        }
+      }
+      proxyGroupElement += `  </div>`;
+      proxyGroupElement += `</div>`;
+    }
+    proxyGroupElement += `</div>`;
+
+    this.html = this.html.replaceAll("PLACEHOLDER_PROXY_GROUP", `${proxyGroupElement}`);
+  }
+
+  buildCountryFlag() {
+    const proxyBankUrl = this.url.searchParams.get("proxy-list");
+    const flagList = [];
+    for (const proxy of cachedProxyList) {
+      flagList.push(proxy.country);
+    }
+
+    let flagElement = "";
+    for (const flag of new Set(flagList)) {
+      flagElement += `<a href="/sub?cc=${flag}${
+        proxyBankUrl ? "&proxy-list=" + proxyBankUrl : ""
+      }" class="py-1" ><img width=20 src="https://hatscripts.github.io/circle-flags/flags/${flag.toLowerCase()}.svg" /></a>`;
+    }
+
+    this.html = this.html.replaceAll("PLACEHOLDER_BENDERA_NEGARA", flagElement);
+  }
+
+  addPageButton(text, link, isDisabled) {
+    const pageButton = `<li><button ${
+      isDisabled ? "disabled" : ""
+    } class="px-3 py-1 bg-amber-400 border-2 border-neutral-800 rounded" onclick=navigateTo('${link}')>${text}</button></li>`;
+
+    this.html = this.html.replaceAll("PLACEHOLDER_PAGE_BUTTON", `${pageButton}\nPLACEHOLDER_PAGE_BUTTON`);
+  }
+
+  build() {
+    this.buildProxyGroup();
+    this.buildCountryFlag();
+
+    this.html = this.html.replaceAll("PLACEHOLDER_API_READY", isApiReady ? "block" : "hidden");
+
+    return this.html.replaceAll(/PLACEHOLDER_\w+/gim, "");
   }
 }
