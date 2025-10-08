@@ -1,8 +1,8 @@
 import { connect } from "cloudflare:sockets";
 
 // Variables
-let rootDomain = "";
-let serviceName = "";
+let rootDomain = "lubissofian5.workers.dev";
+let serviceName = "sofian";
 let APP_DOMAIN = "";
 
 const apiKey = ""; // Ganti dengan Global API key kalian (https://dash.cloudflare.com/profile/api-tokens)
